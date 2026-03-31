@@ -13,16 +13,12 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 
-# ── Constants ─────────────────────────────────────────────────
-
 LOOKBACK   = 60      # days of history as input window
 N_FEATURES = 7       # number of input features per day
 EPOCHS     = 50
 BATCH_SIZE = 32
 VALIDATION_SPLIT = 0.2
 
-
-# ── Feature engineering ───────────────────────────────────────
 
 def build_features(hist: pd.DataFrame) -> pd.DataFrame:
     """
@@ -35,7 +31,6 @@ def build_features(hist: pd.DataFrame) -> pd.DataFrame:
     df = hist.copy()
     df.columns = [c.lower() for c in df.columns]
 
-    # ── RSI (14-day) ──────────────────────────────────────────
     delta   = df["close"].diff()
     gain    = delta.clip(lower=0)
     loss    = -delta.clip(upper=0)
@@ -59,10 +54,8 @@ def build_features(hist: pd.DataFrame) -> pd.DataFrame:
     # ── Price / SMA ratio (momentum signal) ───────────────────
     df["price_sma_ratio"] = df["close"] / df["sma20"]
 
-    # Keep only the 7 input features
     features = df[["close", "open", "volume", "rsi", "macd", "sma20", "price_sma_ratio"]]
 
-    # Drop any remaining NaN rows (first few rows before indicators warm up)
     features = features.dropna()
 
     return features
@@ -92,8 +85,6 @@ def prepare_sequences(features: pd.DataFrame, lookback: int = LOOKBACK):
 
     return np.array(X), np.array(y), scaler, close_scaler
 
-
-# ── Model definition ──────────────────────────────────────────
 
 def build_model(lookback: int = LOOKBACK, n_features: int = N_FEATURES):
     """

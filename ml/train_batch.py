@@ -22,7 +22,6 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from ml.train import train, model_exists
 
-# ── Default batch list (most-searched NSE stocks) ─────────────
 DEFAULT_SYMBOLS = [
     "RELIANCE.NS",
     "TCS.NS",
@@ -72,7 +71,6 @@ def train_batch(symbols: list[str], retrain: bool = False, years: int = 2) -> No
             print(f"  FAILED: {e}")
             failed.append((symbol, str(e)))
 
-    # ── Summary ───────────────────────────────────────────────
     print(f"\n{'='*50}")
     print(f"Batch training complete")
     print(f"  Success : {len(success)} / {total}")

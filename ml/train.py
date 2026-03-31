@@ -39,7 +39,6 @@ from ml.lstm_model import (
 )
 
 
-# ── Paths ─────────────────────────────────────────────────────
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 
@@ -60,7 +59,6 @@ def model_exists(symbol: str) -> bool:
     )
 
 
-# ── Training ──────────────────────────────────────────────────
 
 def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
     """
@@ -72,7 +70,6 @@ def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
     print(f"  History: {years} years  |  Epochs: {epochs}")
     print(f"{'='*50}\n")
 
-    # ── Step 1: Download history ──────────────────────────────
     print("1. Downloading historical data...")
     period = f"{years}y"
     hist   = yf.Ticker(symbol).history(period=period, interval="1d")
@@ -84,13 +81,11 @@ def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
         )
     print(f"   Downloaded {len(hist)} trading days")
 
-    # ── Step 2: Feature engineering ───────────────────────────
     print("2. Engineering features...")
     features = build_features(hist)
     print(f"   Features: {list(features.columns)}")
     print(f"   Rows after feature build: {len(features)}")
 
-    # ── Step 3: Prepare sequences ─────────────────────────────
     print("3. Preparing sequences...")
     X, y, scaler, close_scaler = prepare_sequences(features, LOOKBACK)
     print(f"   X shape: {X.shape}  y shape: {y.shape}")
@@ -101,7 +96,6 @@ def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
     y_train, y_val = y[:split], y[split:]
     print(f"   Train: {len(X_train)} samples  |  Val: {len(X_val)} samples")
 
-    # ── Step 4: Build and train model ─────────────────────────
     print("4. Building model...")
     model = build_model(LOOKBACK, X.shape[2])
     model.summary()
@@ -133,7 +127,6 @@ def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
         verbose         = 1,
     )
 
-    # ── Step 5: Evaluate ──────────────────────────────────────
     print("\n6. Evaluating...")
     val_loss, val_mae = model.evaluate(X_val, y_val, verbose=0)
 
@@ -145,7 +138,6 @@ def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
     print(f"   Val MAE (normalised): {val_mae:.4f}")
     print(f"   Val MAE (~₹): {mae_rupees:.2f}")
 
-    # ── Step 6: Sample prediction ─────────────────────────────
     from ml.lstm_model import predict_next_price
     last_60    = features.tail(LOOKBACK)
     pred_price = predict_next_price(model, last_60, close_scaler, scaler)
@@ -154,19 +146,15 @@ def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
     print(f"   Predicted next   : ₹{pred_price:,.2f}")
     print(f"   Delta            : {((pred_price - actual_last) / actual_last * 100):+.2f}%")
 
-    # ── Step 7: Save model + scalers ──────────────────────────
     print("\n7. Saving model...")
     model_dir = get_model_dir(symbol)
     os.makedirs(model_dir, exist_ok=True)
 
-    # Save model
     model.save(os.path.join(model_dir, "model.keras"))
 
-    # Save scalers
     with open(os.path.join(model_dir, "scalers.pkl"), "wb") as f:
         pickle.dump({"scaler": scaler, "close_scaler": close_scaler}, f)
 
-    # Save metadata
     meta = {
         "symbol":          symbol,
         "trained_on":      str(features.index[-1].date()),
@@ -191,7 +179,6 @@ def train(symbol: str, years: int = 2, epochs: int = EPOCHS) -> dict:
     return meta
 
 
-# ── Loader (used by prediction service) ──────────────────────
 
 def load_model(symbol: str):
     """
@@ -218,8 +205,6 @@ def load_model(symbol: str):
 
     return model, scalers["scaler"], scalers["close_scaler"], meta
 
-
-# ── CLI ───────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train LSTM for an NSE stock")
