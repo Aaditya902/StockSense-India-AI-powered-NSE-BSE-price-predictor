@@ -22,13 +22,11 @@ from datetime import datetime, timezone
 from config import NEWS_API_KEY
 
 
-# ── In-memory cache (per symbol) ─────────────────────────────
 
 _cache: dict[str, dict] = {}   # { "RELIANCE.NS": { data, expires_at } }
 CACHE_TTL = 900                # 15 minutes
 
 
-# ── Sentiment keywords ────────────────────────────────────────
 
 BULLISH_WORDS = [
     "surge", "rally", "beat", "profit", "growth", "strong", "record",
@@ -43,8 +41,6 @@ BEARISH_WORDS = [
     "pressure", "struggle", "trouble", "crisis", "fear", "uncertain",
 ]
 
-
-# ── Main function ─────────────────────────────────────────────
 
 def get_stock_news(symbol: str, company_name: str = "") -> dict:
     """
@@ -104,8 +100,6 @@ def get_stock_news(symbol: str, company_name: str = "") -> dict:
     return result
 
 
-# ── NewsAPI fetcher ───────────────────────────────────────────
-
 def _fetch_newsapi(company_name: str, symbol: str) -> list[dict]:
     """
     Fetch from NewsAPI.
@@ -142,8 +136,6 @@ def _fetch_newsapi(company_name: str, symbol: str) -> list[dict]:
     return articles
 
 
-# ── yfinance news fallback ────────────────────────────────────
-
 def _fetch_yfinance_news(symbol: str) -> list[dict]:
     """
     yfinance provides basic news via ticker.news.
@@ -175,7 +167,6 @@ def _fetch_yfinance_news(symbol: str) -> list[dict]:
     return articles
 
 
-# ── Sentiment scorer ──────────────────────────────────────────
 
 def _score_article(article: dict) -> dict:
     """
@@ -205,7 +196,6 @@ def _score_article(article: dict) -> dict:
     }
 
 
-# ── Helper ────────────────────────────────────────────────────
 
 def _get_company_name(symbol: str) -> str:
     """Get company short name from yfinance for search query."""
