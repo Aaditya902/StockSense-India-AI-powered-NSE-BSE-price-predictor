@@ -34,7 +34,6 @@ class SearchResolver:
         results = []
         seen = set()
 
-        # Pass 1 — exact / starts-with matches (highest priority)
         for stock in self._stocks:
             sym = stock["symbol"]
             if sym in seen:
@@ -51,7 +50,6 @@ class SearchResolver:
                 results.append(self._format(stock))
                 seen.add(sym)
 
-        # Pass 2 — contains matches
         if len(results) < max_results:
             for stock in self._stocks:
                 sym = stock["symbol"]
@@ -68,7 +66,6 @@ class SearchResolver:
                     if len(results) >= max_results:
                         break
 
-        # Pass 3 — word-level partial match fallback
         if len(results) < max_results:
             query_words = q.split()
             for stock in self._stocks:

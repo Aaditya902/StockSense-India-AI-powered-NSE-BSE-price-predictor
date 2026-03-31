@@ -145,12 +145,36 @@ async def _fetch_price_async(symbol: str) -> dict:
 def _fetch_price_sync(symbol: str) -> dict:
     """
     Synchronous yfinance price fetch — runs in thread pool.
-    Returns a price payload ready to send over WebSocket.
+    Uses 3-strategy cascade same as stock_service.
     """
     try:
-        info           = yf.Ticker(symbol).fast_info
-        current_price  = round(float(info.last_price), 2)
-        previous_close = round(float(info.previous_close), 2)
+        ticker         = yf.Ticker(symbol)
+        current_price  = None
+        previous_close = None
+
+        # Strategy 1 — fast_info
+        try:
+            fi             = ticker.fast_info
+            v = fi.last_price
+            current_price  = round(float(v), 2) if v and float(v) != 0 else None
+            v = fi.previous_close
+            previous_close = round(float(v), 2) if v and float(v) != 0 else None
+        except Exception:
+            pass
+
+        # Strategy 2 — history
+        if current_price is None:
+            hist = ticker.history(period="5d", interval="1d")
+            if not hist.empty:
+                closes = hist["Close"].dropna().tolist()
+                if closes:
+                    current_price  = round(float(closes[-1]), 2)
+                    previous_close = round(float(closes[-2]), 2) if len(closes) >= 2 else current_price
+
+        if current_price is None:
+            raise ValueError("No price data")
+
+        previous_close = previous_close or current_price
         change         = round(current_price - previous_close, 2)
         change_pct     = round((change / previous_close) * 100, 2) if previous_close else 0.0
 
@@ -165,7 +189,6 @@ def _fetch_price_sync(symbol: str) -> dict:
         }
 
     except Exception as e:
-        # Never crash — send an error payload the frontend can handle
         return {
             "type":      "error",
             "symbol":    symbol,

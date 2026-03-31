@@ -69,26 +69,71 @@ def get_current_price(symbol: str) -> dict:
 
 # ── Internal fetchers ─────────────────────────────────────────
 
-def _fetch_price(ticker: yf.Ticker, symbol: str) -> dict:
-    """Fetch current price and day change."""
+def _safe_float(val):
+    """Return float or None — never raises, treats 0 as missing."""
     try:
-        info           = ticker.fast_info
-        current_price  = round(float(info.last_price), 2)
-        previous_close = round(float(info.previous_close), 2)
-        change         = round(current_price - previous_close, 2)
-        change_pct     = round((change / previous_close) * 100, 2) if previous_close else 0.0
+        f = float(val)
+        return f if f != 0.0 else None
+    except (TypeError, ValueError):
+        return None
 
-        return {
-            "symbol":         symbol,
-            "current_price":  current_price,
-            "previous_close": previous_close,
-            "change":         change,
-            "change_pct":     change_pct,
-            "direction":      "up" if change > 0 else "down" if change < 0 else "flat",
-            "timestamp":      datetime.now(timezone.utc).isoformat(),
-        }
-    except Exception as e:
-        raise RuntimeError(f"Price fetch failed for {symbol}: {e}")
+
+def _fetch_price(ticker: yf.Ticker, symbol: str) -> dict:
+    """
+    Fetch current price using 3-strategy cascade.
+    Strategy 1: fast_info (live, works during market hours)
+    Strategy 2: history last close (works after hours)
+    Strategy 3: ticker.info regularMarketPrice (slowest, most reliable)
+    """
+    current_price  = None
+    previous_close = None
+
+    # Strategy 1 — fast_info
+    try:
+        fi             = ticker.fast_info
+        current_price  = _safe_float(fi.last_price)
+        previous_close = _safe_float(fi.previous_close)
+    except Exception:
+        pass
+
+    # Strategy 2 — history
+    if current_price is None:
+        try:
+            hist = ticker.history(period="5d", interval="1d")
+            if not hist.empty:
+                closes = hist["Close"].dropna().tolist()
+                if closes:
+                    current_price  = current_price  or _safe_float(closes[-1])
+                    previous_close = previous_close or _safe_float(closes[-2] if len(closes) >= 2 else closes[-1])
+        except Exception:
+            pass
+
+    # Strategy 3 — ticker.info
+    if current_price is None:
+        try:
+            info           = ticker.info
+            current_price  = _safe_float(info.get("regularMarketPrice") or info.get("previousClose"))
+            previous_close = _safe_float(info.get("previousClose") or info.get("regularMarketPreviousClose"))
+        except Exception:
+            pass
+
+    if current_price is None:
+        raise RuntimeError(f"Price fetch failed for {symbol} — no data from yfinance")
+
+    current_price  = round(current_price, 2)
+    previous_close = round(previous_close or current_price, 2)
+    change         = round(current_price - previous_close, 2)
+    change_pct     = round((change / previous_close) * 100, 2) if previous_close else 0.0
+
+    return {
+        "symbol":         symbol,
+        "current_price":  current_price,
+        "previous_close": previous_close,
+        "change":         change,
+        "change_pct":     change_pct,
+        "direction":      "up" if change > 0 else "down" if change < 0 else "flat",
+        "timestamp":      datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _fetch_company_info(ticker: yf.Ticker, symbol: str) -> dict:
