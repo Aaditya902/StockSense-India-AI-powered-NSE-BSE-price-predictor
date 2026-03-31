@@ -368,7 +368,6 @@ def _call_gemini(prompt: str) -> tuple[float, str]:
     return _parse_ai_response(txt)
 
 
-# ── Utility ───────────────────────────────────────────────────
 
 def _get_current_price(symbol: str) -> float:
     """Fetch current price — lightweight fast_info call."""
