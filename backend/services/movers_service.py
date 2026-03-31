@@ -15,16 +15,12 @@ import yfinance as yf
 from datetime import datetime, timezone
 
 
-# ── In-memory cache ───────────────────────────────────────────
-
 _cache: dict = {
     "data":       None,
     "expires_at": 0,       # Unix timestamp
 }
 CACHE_TTL = 300            # 5 minutes
 
-
-# ── NSE India API config ──────────────────────────────────────
 
 NSE_BASE    = "https://www.nseindia.com"
 NSE_GAINERS = f"{NSE_BASE}/api/live-analysis-variations?index=gainers"
@@ -56,7 +52,6 @@ NIFTY50_SYMBOLS = [
 ]
 
 
-# ── Main function called by router ────────────────────────────
 
 def get_market_movers() -> dict:
     """
@@ -90,7 +85,6 @@ def get_market_movers() -> dict:
         return _empty_response()
 
 
-# ── NSE India fetcher ─────────────────────────────────────────
 
 def _fetch_from_nse() -> dict:
     """
@@ -160,7 +154,6 @@ def _parse_nse_movers(data: dict, side: str) -> list[dict]:
     return movers
 
 
-# ── yfinance fallback ─────────────────────────────────────────
 
 def _fetch_from_yfinance() -> dict:
     """
@@ -201,7 +194,6 @@ def _fetch_from_yfinance() -> dict:
     }
 
 
-# ── Safe empty response ───────────────────────────────────────
 
 def _empty_response() -> dict:
     return {
@@ -212,7 +204,6 @@ def _empty_response() -> dict:
     }
 
 
-# ── Cache invalidation (call if you want fresh data) ──────────
 
 def invalidate_cache():
     _cache["data"]       = None
