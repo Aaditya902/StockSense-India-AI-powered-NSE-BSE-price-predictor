@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>StockSense India</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  /* ── Reset & base ──────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #080c10;
+    --bg1:       #0d1117;
+    --bg2:       #111820;
+    --bg3:       #18222e;
+    --border:    rgba(99,179,255,0.10);
+    --border2:   rgba(99,179,255,0.20);
+    --text:      #d4e2f0;
+    --muted:     #5a7a94;
+    --accent:    #3b9eff;
+    --green:     #22d47a;
+    --red:       #ff4d6a;
+    --amber:     #f0a832;
+    --gold:      #e8c840;
+    --mono:      'Space Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+    --radius:    6px;
+    --glow:      0 0 24px rgba(59,158,255,0.08);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Subtle grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(59,158,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,158,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── Layout ────────────────────────────────────────────── */
+  .shell { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 20px; }
+
+  /* ── Header ────────────────────────────────────────────── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(8,12,16,0.9);
+    backdrop-filter: blur(12px);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 16px; font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── Search bar ─────────────────────────────────────────── */
+  .search-wrap {
+    flex: 1; max-width: 480px; margin: 0 24px;
+    position: relative;
+  }
+  .search-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 14px; pointer-events: none;
+  }
+  #search-input {
+    width: 100%; padding: 10px 16px 10px 40px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--sans); font-size: 14px;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,158,255,0.12);
+  }
+  #search-input::placeholder { color: var(--muted); }
+
+  /* Dropdown */
+  #search-dropdown {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: none; z-index: 200;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+  }
+  #search-dropdown.open { display: block; }
+  .dd-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 16px; cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid var(--border);
+  }
+  .dd-item:last-child { border-bottom: none; }
+  .dd-item:hover { background: var(--bg3); }
+  .dd-name { font-size: 14px; font-weight: 500; }
+  .dd-sym  { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .dd-sec  { font-size: 11px; color: var(--muted); margin-left: auto; padding-left: 12px; }
+
+  /* Header time */
+  .header-time {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* ── Index ticker bar ───────────────────────────────────── */
+  .ticker-bar {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+  }
+  .index-card {
+    background: var(--bg1);
+    padding: 14px 20px;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .index-card:hover { background: var(--bg2); }
+  .index-label { font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.5px; margin-bottom: 4px; }
+  .index-price { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--text); }
+  .index-change { font-size: 12px; margin-top: 2px; font-family: var(--mono); }
+  .up   { color: var(--green); }
+  .down { color: var(--red); }
+  .flat { color: var(--muted); }
+
+  /* ── Sparkline charts in index cards ────────────────────── */
+  .index-sparkline { height: 36px; margin-top: 8px; }
+
+  /* ── Page content ───────────────────────────────────────── */
+  .page-body { padding: 24px 20px; }
+
+  /* Section headers */
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::before {
+    content: ''; display: block;
+    width: 3px; height: 12px;
+    background: var(--accent); border-radius: 2px;
+  }
+
+  /* ── Horizontal scroll rows ─────────────────────────────── */
+  .scroll-row {
+    display: flex; gap: 10px;
+    overflow-x: auto; padding-bottom: 6px;
+    scrollbar-width: none;
+  }
+  .scroll-row::-webkit-scrollbar { display: none; }
+
+  /* Stock mini-card */
+  .stock-card {
+    flex: 0 0 160px;
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.2s, background 0.2s;
+    position: relative; overflow: hidden;
+  }
+  .stock-card::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(59,158,255,0.04), transparent);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .stock-card:hover { border-color: var(--border2); transform: translateY(-1px); }
+  .stock-card:hover::after { opacity: 1; }
+  .sc-sym   { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 700; }
+  .sc-name  { font-size: 11px; color: var(--muted); margin: 3px 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sc-price { font-family: var(--mono); font-size: 15px; font-weight: 700; }
+  .sc-chg   { font-family: var(--mono); font-size: 11px; margin-top: 2px; }
+  .sc-reason{ font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.3; }
+
+  /* Commodity card */
+  .commodity-card {
+    flex: 0 0 180px;
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    cursor: default;
+    position: relative; overflow: hidden;
+  }
+  .cc-icon  { font-size: 18px; margin-bottom: 6px; }
+  .cc-name  { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .cc-price { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+  .cc-unit  { font-size: 10px; color: var(--muted); }
+  .cc-chg   { font-family: var(--mono); font-size: 12px; margin-top: 4px; }
+
+  /* ── Gainers / Losers grid ──────────────────────────────── */
+  .movers-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin-bottom: 28px;
+  }
+  .movers-col { }
+  .mover-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .mover-row:hover { background: var(--bg2); border-color: var(--border2); }
+  .mover-rank {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    width: 18px; flex-shrink: 0;
+  }
+  .mover-info { flex: 1; padding: 0 10px; }
+  .mover-sym  { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  .mover-name { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+  .mover-right { text-align: right; }
+  .mover-price { font-family: var(--mono); font-size: 13px; font-weight: 700; }
+  .mover-chg   { font-family: var(--mono); font-size: 12px; }
+
+  /* ── Recently viewed ────────────────────────────────────── */
+  .recent-empty {
+    padding: 20px; text-align: center;
+    color: var(--muted); font-size: 13px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .recent-item {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer; margin: 0 6px 6px 0;
+    transition: border-color 0.15s, background 0.15s;
+    font-size: 13px;
+  }
+  .recent-item:hover { border-color: var(--accent); background: var(--bg2); }
+  .recent-sym { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+
+  /* ── Loaders ────────────────────────────────────────────── */
+  .skeleton {
+    background: linear-gradient(90deg, var(--bg2) 25%, var(--bg3) 50%, var(--bg2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: var(--radius);
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  .loader-row { display: flex; gap: 10px; }
+  .skel-card { flex: 0 0 160px; height: 100px; }
+  .skel-mover { height: 48px; margin-bottom: 6px; }
+
+  /* ── Section spacing ────────────────────────────────────── */
+  .section { margin-bottom: 28px; }
+
+  /* ── Refresh indicator ──────────────────────────────────── */
+  .refresh-hint {
+    font-family: var(--mono); font-size: 10px; color: var(--muted);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .refresh-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--green); animation: pulse 2s infinite;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────── */
+  @media (max-width: 640px) {
+    .ticker-bar { grid-template-columns: 1fr; }
+    .movers-grid { grid-template-columns: 1fr; }
+    .search-wrap { max-width: none; margin: 0 12px; }
+    .header-time { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <span class="logo-dot"></span>
+    StockSense
+  </div>
+
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input
+      id="search-input"
+      type="text"
+      placeholder="Search stocks — Reliance, TCS, HDFC..."
+      autocomplete="off"
+    />
+    <div id="search-dropdown"></div>
+  </div>
+
+  <div class="header-time" id="header-time"></div>
+</header>
+
+<!-- ── Index ticker bar ─────────────────────────────────────── -->
+<div class="ticker-bar" id="ticker-bar">
+  <div class="index-card skeleton" style="height:88px"></div>
+  <div class="index-card skeleton" style="height:88px"></div>
+  <div class="index-card skeleton" style="height:88px"></div>
+</div>
+
+<!-- ── Page body ────────────────────────────────────────────── -->
+<div class="page-body shell">
+
+  <!-- Gainers & Losers -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Top movers</span>
+      <span class="refresh-hint"><span class="refresh-dot"></span>Live</span>
+    </div>
+    <div class="movers-grid" id="movers-grid">
+      <div class="movers-col">
+        <div class="section-title" style="margin-bottom:10px;font-size:10px">
+          <span style="color:var(--green)">▲</span> Gainers
+        </div>
+        <div id="gainers-list">
+          <div class="skel-mover skeleton"></div>
+          <div class="skel-mover skeleton"></div>
+          <div class="skel-mover skeleton"></div>
+        </div>
+      </div>
+      <div class="movers-col">
+        <div class="section-title" style="margin-bottom:10px;font-size:10px">
+          <span style="color:var(--red)">▼</span> Losers
+        </div>
+        <div id="losers-list">
+          <div class="skel-mover skeleton"></div>
+          <div class="skel-mover skeleton"></div>
+          <div class="skel-mover skeleton"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trending Stocks -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Trending stocks</span>
+    </div>
+    <div class="scroll-row" id="trending-stocks">
+      <div class="skel-card skeleton"></div>
+      <div class="skel-card skeleton"></div>
+      <div class="skel-card skeleton"></div>
+      <div class="skel-card skeleton"></div>
+    </div>
+  </div>
+
+  <!-- Trending Commodities -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Commodities</span>
+    </div>
+    <div class="scroll-row" id="trending-commodities">
+      <div class="skel-card skeleton" style="flex:0 0 180px"></div>
+      <div class="skel-card skeleton" style="flex:0 0 180px"></div>
+      <div class="skel-card skeleton" style="flex:0 0 180px"></div>
+    </div>
+  </div>
+
+  <!-- Recently Viewed -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Recently viewed</span>
+      <button onclick="clearRecent()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--mono)">clear</button>
+    </div>
+    <div id="recent-viewed"></div>
+  </div>
+
+</div><!-- /page-body -->
+
+<script>
+const API = 'http://localhost:8000';
+
+// ── Commodity icons ────────────────────────────────────────
+const COMM_ICONS = { Gold:'◈', Silver:'◇', 'Crude Oil':'◉', 'Natural Gas':'◎' };
+
+// ── Clock ──────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const hh  = String(ist.getHours()).padStart(2,'0');
+  const mm  = String(ist.getMinutes()).padStart(2,'0');
+  const ss  = String(ist.getSeconds()).padStart(2,'0');
+  document.getElementById('header-time').textContent = `IST ${hh}:${mm}:${ss}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Helpers ────────────────────────────────────────────────
+const fmt  = (n) => new Intl.NumberFormat('en-IN').format(n);
+const fmtP = (n) => (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+const cls  = (n) => n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
+
+function navigateTo(symbol) {
+  saveRecent(symbol);
+  window.location.href = `stock.html?symbol=${encodeURIComponent(symbol)}`;
+}
+
+// ── Recently viewed (localStorage) ────────────────────────
+const RECENT_KEY = 'ss_recent';
+const MAX_RECENT = 10;
+
+function getRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveRecent(symbolObj) {
+  // symbolObj can be a string or { symbol, name }
+  const sym  = typeof symbolObj === 'string' ? symbolObj : symbolObj.symbol;
+  const name = typeof symbolObj === 'object' ? symbolObj.name : sym.replace('.NS','');
+  let recent = getRecent().filter(r => r.symbol !== sym);
+  recent.unshift({ symbol: sym, name });
+  if (recent.length > MAX_RECENT) recent = recent.slice(0, MAX_RECENT);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+  renderRecent();
+}
+
+function clearRecent() {
+  localStorage.removeItem(RECENT_KEY);
+  renderRecent();
+}
+
+function renderRecent() {
+  const el     = document.getElementById('recent-viewed');
+  const recent = getRecent();
+  if (!recent.length) {
+    el.innerHTML = '<div class="recent-empty">No recently viewed stocks yet.<br>Search for a stock above to get started.</div>';
+    return;
+  }
+  el.innerHTML = recent.map(r => `
+    <span class="recent-item" onclick="navigateTo('${r.symbol}')">
+      ${r.name}
+      <span class="recent-sym">${r.symbol.replace('.NS','')}</span>
+    </span>
+  `).join('');
+}
+
+// ── Fetch market overview ──────────────────────────────────
+async function loadOverview() {
+  try {
+    const data = await fetch(`${API}/market/overview`).then(r => r.json());
+    const bar  = document.getElementById('ticker-bar');
+
+    const indices = [
+      { key: 'sensex',   label: 'SENSEX' },
+      { key: 'nifty50',  label: 'NIFTY 50' },
+      { key: 'banknifty',label: 'BANK NIFTY' },
+    ];
+
+    bar.innerHTML = indices.map(({ key, label }) => {
+      const d = data[key];
+      return `
+        <div class="index-card" onclick="loadIndexChart('${key}', this)">
+          <div class="index-label">${label}</div>
+          <div class="index-price">${fmt(d.current)}</div>
+          <div class="index-change ${cls(d.change_pct)}">
+            ${fmtP(d.change_pct)} &nbsp; ${d.change > 0 ? '▲' : d.change < 0 ? '▼' : '—'} ${Math.abs(d.change).toFixed(2)}
+          </div>
+          <div class="index-sparkline" id="spark-${key}"></div>
+        </div>
+      `;
+    }).join('');
+
+    // Load sparklines
+    indices.forEach(({ key }) => loadSparkline(key));
+
+  } catch(e) {
+    document.getElementById('ticker-bar').innerHTML =
+      '<div style="padding:20px;color:var(--muted);font-size:13px">Market data unavailable — is the server running?</div>';
+  }
+}
+
+// ── Mini sparkline for index cards ────────────────────────
+async function loadSparkline(indexKey) {
+  try {
+    const bars = await fetch(`${API}/market/overview/history?index=${indexKey}&period=1mo`).then(r => r.json());
+    const el   = document.getElementById(`spark-${indexKey}`);
+    if (!el || !bars.length) return;
+
+    const chart = LightweightCharts.createChart(el, {
+      width:  el.parentElement.clientWidth - 40,
+      height: 36,
+      layout:      { background: { type: 'solid', color: 'transparent' }, textColor: 'transparent' },
+      grid:        { vertLines: { visible: false }, horzLines: { visible: false } },
+      crosshair:   { visible: false },
+      timeScale:   { visible: false },
+      rightPriceScale: { visible: false },
+      leftPriceScale:  { visible: false },
+      handleScroll: false, handleScale: false,
+    });
+
+    const closes = bars.map(b => b.close);
+    const color  = closes[closes.length - 1] >= closes[0] ? '#22d47a' : '#ff4d6a';
+
+    const series = chart.addAreaSeries({
+      lineColor: color, topColor: color + '30', bottomColor: 'transparent',
+      lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    series.setData(bars.map(b => ({ time: b.date, value: b.close })));
+    chart.timeScale().fitContent();
+
+  } catch(e) { /* sparkline is non-critical */ }
+}
+
+// ── Fetch gainers & losers ─────────────────────────────────
+async function loadMovers() {
+  try {
+    const data = await fetch(`${API}/market/movers`).then(r => r.json());
+    renderMovers('gainers-list', data.gainers, true);
+    renderMovers('losers-list',  data.losers,  false);
+  } catch(e) {
+    document.getElementById('gainers-list').innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px">Unavailable</div>';
+    document.getElementById('losers-list').innerHTML  = '<div style="color:var(--muted);font-size:12px;padding:10px">Unavailable</div>';
+  }
+}
+
+function renderMovers(elId, stocks, isGainer) {
+  const el = document.getElementById(elId);
+  if (!stocks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px">No data</div>'; return; }
+  el.innerHTML = stocks.map((s, i) => `
+    <div class="mover-row" onclick="navigateTo('${s.symbol}')">
+      <span class="mover-rank">${i + 1}</span>
+      <div class="mover-info">
+        <div class="mover-sym">${s.symbol.replace('.NS','')}</div>
+        <div class="mover-name">${s.name}</div>
+      </div>
+      <div class="mover-right">
+        <div class="mover-price">₹${fmt(s.price)}</div>
+        <div class="mover-chg ${isGainer ? 'up' : 'down'}">${fmtP(s.change_pct)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Fetch trending ─────────────────────────────────────────
+async function loadTrending() {
+  try {
+    const data = await fetch(`${API}/market/trending`).then(r => r.json());
+
+    // Trending stocks
+    document.getElementById('trending-stocks').innerHTML =
+      data.trending_stocks.map(s => `
+        <div class="stock-card" onclick="navigateTo('${s.symbol}')">
+          <div class="sc-sym">${s.symbol.replace('.NS','')}</div>
+          <div class="sc-name">${s.name}</div>
+          <div class="sc-price ${cls(s.change_pct)}">₹${fmt(s.price)}</div>
+          <div class="sc-chg  ${cls(s.change_pct)}">${fmtP(s.change_pct)}</div>
+          <div class="sc-reason">${s.reason}</div>
+        </div>
+      `).join('');
+
+    // Commodities
+    document.getElementById('trending-commodities').innerHTML =
+      data.trending_commodities.map(c => `
+        <div class="commodity-card">
+          <div class="cc-icon">${COMM_ICONS[c.name] || '◆'}</div>
+          <div class="cc-name">${c.name}</div>
+          <div class="cc-price ${cls(c.change_pct)}">$${fmt(c.price)}</div>
+          <div class="cc-unit">${c.unit}</div>
+          <div class="cc-chg ${cls(c.change_pct)}">${fmtP(c.change_pct)}</div>
+        </div>
+      `).join('');
+
+  } catch(e) {
+    document.getElementById('trending-stocks').innerHTML    = '<div style="color:var(--muted);font-size:12px">Unavailable</div>';
+    document.getElementById('trending-commodities').innerHTML = '<div style="color:var(--muted);font-size:12px">Unavailable</div>';
+  }
+}
+
+// ── Search logic ───────────────────────────────────────────
+let searchTimer = null;
+const searchInput    = document.getElementById('search-input');
+const searchDropdown = document.getElementById('search-dropdown');
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = searchInput.value.trim();
+  if (q.length < 1) { closeDropdown(); return; }
+  searchTimer = setTimeout(() => doSearch(q), 250);
+});
+
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeDropdown();
+});
+
+document.addEventListener('click', (e) => {
+  if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) closeDropdown();
+});
+
+async function doSearch(q) {
+  try {
+    const data = await fetch(`${API}/search?q=${encodeURIComponent(q)}`).then(r => r.json());
+    renderDropdown(data.results);
+  } catch { closeDropdown(); }
+}
+
+function renderDropdown(results) {
+  if (!results.length) { closeDropdown(); return; }
+  searchDropdown.innerHTML = results.map(r => `
+    <div class="dd-item" onclick="selectStock('${r.symbol}', '${r.name.replace(/'/g,"\\'")}')">
+      <div>
+        <div class="dd-name">${r.name}</div>
+        <div class="dd-sym">${r.symbol}</div>
+      </div>
+      <span class="dd-sec">${r.sector}</span>
+    </div>
+  `).join('');
+  searchDropdown.classList.add('open');
+}
+
+function closeDropdown() {
+  searchDropdown.classList.remove('open');
+  searchDropdown.innerHTML = '';
+}
+
+function selectStock(symbol, name) {
+  closeDropdown();
+  searchInput.value = '';
+  saveRecent({ symbol, name });
+  navigateTo(symbol);
+}
+
+// ── Init ───────────────────────────────────────────────────
+async function init() {
+  renderRecent();
+  await Promise.all([loadOverview(), loadMovers(), loadTrending()]);
+
+  // Auto-refresh overview every 60s
+  setInterval(loadOverview, 60000);
+  // Refresh movers + trending every 5min
+  setInterval(() => { loadMovers(); loadTrending(); }, 300000);
+}
+
+init();
+</script>
+</body>
+</html>
