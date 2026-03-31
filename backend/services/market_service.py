@@ -24,7 +24,6 @@ INDICES = {
 }
 
 
-# ── Safe float helper ─────────────────────────────────────────
 
 def _safe_float(val) -> Optional[float]:
     """Return float or None — never raises."""
@@ -35,7 +34,6 @@ def _safe_float(val) -> Optional[float]:
         return None
 
 
-# ── Core fetcher with 3-strategy cascade ──────────────────────
 
 def fetch_index(symbol: str, name: str) -> dict:
     """
@@ -49,7 +47,6 @@ def fetch_index(symbol: str, name: str) -> dict:
     day_high       = None
     day_low        = None
 
-    # ── Strategy 1: fast_info (live, works during market hours) ──
     try:
         fi             = ticker.fast_info
         current        = _safe_float(fi.last_price)
@@ -59,7 +56,6 @@ def fetch_index(symbol: str, name: str) -> dict:
     except Exception:
         pass
 
-    # ── Strategy 2: history (works after hours + holidays) ───────
     if current is None or previous_close is None:
         try:
             hist = ticker.history(period="5d", interval="1d")
@@ -76,7 +72,6 @@ def fetch_index(symbol: str, name: str) -> dict:
         except Exception:
             pass
 
-    # ── Strategy 3: ticker.info (slowest, most reliable fallback) ─
     if current is None:
         try:
             info           = ticker.info
@@ -87,7 +82,6 @@ def fetch_index(symbol: str, name: str) -> dict:
         except Exception:
             pass
 
-    # ── Build result ──────────────────────────────────────────────
     if current is None:
         return _fallback_index(name, symbol, "No data from yfinance — market may be closed")
 
@@ -112,7 +106,6 @@ def fetch_index(symbol: str, name: str) -> dict:
     }
 
 
-# ── History fetcher ───────────────────────────────────────────
 
 def fetch_index_history(symbol: str, period: str = "1mo") -> list[dict]:
     """Fetch OHLCV history for sparkline charts."""
@@ -135,8 +128,6 @@ def fetch_index_history(symbol: str, period: str = "1mo") -> list[dict]:
         return []
 
 
-# ── Main function ─────────────────────────────────────────────
-
 def get_market_overview() -> dict:
     results = {}
     for key, meta in INDICES.items():
@@ -152,7 +143,6 @@ def get_index_history(index_key: str, period: str = "1mo") -> list[dict]:
     return fetch_index_history(meta["symbol"], period)
 
 
-# ── Fallback ──────────────────────────────────────────────────
 
 def _fallback_index(name: str, symbol: str, reason: str = "") -> dict:
     return {
