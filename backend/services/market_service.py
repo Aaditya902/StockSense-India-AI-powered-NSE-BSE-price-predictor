@@ -15,6 +15,7 @@ Fix: 3-strategy cascade
 import yfinance as yf
 from datetime import datetime, timezone
 from typing import Optional
+from backend.services.yf_session import get_ticker
 
 
 INDICES = {
@@ -34,19 +35,21 @@ def _safe_float(val) -> Optional[float]:
         return None
 
 
+# Core fetcher with 3-strategy cascade 
 
 def fetch_index(symbol: str, name: str) -> dict:
     """
     Fetch index data using a 3-strategy cascade.
     Always returns a valid dict — never raises.
     """
-    ticker = yf.Ticker(symbol)
+    ticker = get_ticker(symbol)
 
     current        = None
     previous_close = None
     day_high       = None
     day_low        = None
 
+    #  Strategy 1: fast_info (live, works during market hours) 
     try:
         fi             = ticker.fast_info
         current        = _safe_float(fi.last_price)
@@ -56,6 +59,7 @@ def fetch_index(symbol: str, name: str) -> dict:
     except Exception:
         pass
 
+    # Strategy 2: history (works after hours + holidays) 
     if current is None or previous_close is None:
         try:
             hist = ticker.history(period="5d", interval="1d")
@@ -72,6 +76,7 @@ def fetch_index(symbol: str, name: str) -> dict:
         except Exception:
             pass
 
+    # Strategy 3: ticker.info (slowest, most reliable fallback) 
     if current is None:
         try:
             info           = ticker.info
@@ -106,11 +111,10 @@ def fetch_index(symbol: str, name: str) -> dict:
     }
 
 
-
 def fetch_index_history(symbol: str, period: str = "1mo") -> list[dict]:
     """Fetch OHLCV history for sparkline charts."""
     try:
-        hist = yf.Ticker(symbol).history(period=period, interval="1d")
+        hist = get_ticker(symbol).history(period=period, interval="1d")
         if hist.empty:
             return []
         return [
@@ -141,7 +145,6 @@ def get_index_history(index_key: str, period: str = "1mo") -> list[dict]:
     if not meta:
         return []
     return fetch_index_history(meta["symbol"], period)
-
 
 
 def _fallback_index(name: str, symbol: str, reason: str = "") -> dict:

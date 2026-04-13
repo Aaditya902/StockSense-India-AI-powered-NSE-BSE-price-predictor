@@ -9,10 +9,8 @@ Called by   : GET /stock/{symbol}
 import yfinance as yf
 from datetime import datetime, timezone
 from typing import Optional
+from backend.services.yf_session import get_ticker
 
-
-# ── Period → yfinance interval mapping ───────────────────────
-# Controls chart bar granularity shown to user
 
 PERIOD_MAP = {
     "1d":  {"period": "1d",  "interval": "5m"},    # 5-min bars for intraday
@@ -22,8 +20,6 @@ PERIOD_MAP = {
 }
 DEFAULT_PERIOD = "1m"
 
-
-# ── Main functions ────────────────────────────────────────────
 
 def get_stock_detail(symbol: str, chart_period: str = DEFAULT_PERIOD) -> dict:
     """
@@ -36,7 +32,7 @@ def get_stock_detail(symbol: str, chart_period: str = DEFAULT_PERIOD) -> dict:
     chart_period: "1d" | "1w" | "1m" | "3m"
     """
     symbol      = _normalise_symbol(symbol)
-    ticker      = yf.Ticker(symbol)
+    ticker      = get_ticker(symbol)
     period_cfg  = PERIOD_MAP.get(chart_period, PERIOD_MAP[DEFAULT_PERIOD])
 
     # Fetch price, info, and history in parallel calls
@@ -63,11 +59,9 @@ def get_current_price(symbol: str) -> dict:
     Returns only price fields, no chart or company info.
     """
     symbol = _normalise_symbol(symbol)
-    ticker = yf.Ticker(symbol)
+    ticker = get_ticker(symbol)
     return _fetch_price(ticker, symbol)
 
-
-# ── Internal fetchers ─────────────────────────────────────────
 
 def _safe_float(val):
     """Return float or None — never raises, treats 0 as missing."""
@@ -236,15 +230,24 @@ def _fetch_chart(ticker: yf.Ticker, period_cfg: dict) -> list[dict]:
     return bars
 
 
-# ── Utility ───────────────────────────────────────────────────
-
 def _normalise_symbol(symbol: str) -> str:
-    """
-    Ensure symbol is in yfinance NSE format.
-    'RELIANCE'   → 'RELIANCE.NS'
-    'reliance'   → 'RELIANCE.NS'
-    'RELIANCE.NS' → 'RELIANCE.NS'  (unchanged)
-    """
+
+    symbol = symbol.strip()
+
+    # If it contains spaces it's a company name, not a symbol — resolve it
+    if " " in symbol:
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+            from search_resolver import SearchResolver
+            result = SearchResolver().resolve(symbol)
+            if result:
+                return result
+        except Exception:
+            pass
+        # If resolution fails, take first word only as best guess
+        symbol = symbol.split()[0]
+
     symbol = symbol.upper().strip()
     if not symbol.endswith(".NS") and not symbol.endswith(".BO"):
         symbol += ".NS"
