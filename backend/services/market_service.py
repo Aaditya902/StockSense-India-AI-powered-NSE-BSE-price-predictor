@@ -25,7 +25,6 @@ INDICES = {
 }
 
 
-
 def _safe_float(val) -> Optional[float]:
     """Return float or None — never raises."""
     try:
@@ -35,7 +34,7 @@ def _safe_float(val) -> Optional[float]:
         return None
 
 
-# Core fetcher with 3-strategy cascade 
+#  Core fetcher with 3-strategy cascade 
 
 def fetch_index(symbol: str, name: str) -> dict:
     """
@@ -59,7 +58,7 @@ def fetch_index(symbol: str, name: str) -> dict:
     except Exception:
         pass
 
-    # Strategy 2: history (works after hours + holidays) 
+    #  Strategy 2: history (works after hours + holidays) 
     if current is None or previous_close is None:
         try:
             hist = ticker.history(period="5d", interval="1d")
@@ -76,7 +75,7 @@ def fetch_index(symbol: str, name: str) -> dict:
         except Exception:
             pass
 
-    # Strategy 3: ticker.info (slowest, most reliable fallback) 
+    #  Strategy 3: ticker.info (slowest, most reliable fallback) 
     if current is None:
         try:
             info           = ticker.info

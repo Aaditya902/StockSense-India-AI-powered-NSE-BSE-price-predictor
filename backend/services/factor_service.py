@@ -18,12 +18,15 @@ Called by: GET /stock/{symbol}/factors
 """
 
 import yfinance as yf
+from backend.services.yf_session import get_ticker
 import requests
 from datetime import datetime, timezone
 from typing import Optional
 
 from config import NEWS_API_KEY, FRED_API_KEY, NIFTY50_SYMBOL
 
+
+# ── Factor weights — must sum to 1.0 ─────────────────────────
 
 WEIGHTS = {
     "supply_demand":   0.25,
@@ -34,6 +37,8 @@ WEIGHTS = {
     "liquidity":       0.10,
 }
 
+# ── Label thresholds ──────────────────────────────────────────
+
 def _label(score: float) -> str:
     if score >= 0.2:  return "bullish"
     if score <= -0.2: return "bearish"
@@ -43,12 +48,14 @@ def _clamp(v: float) -> float:
     return max(-1.0, min(1.0, round(v, 3)))
 
 
+# ── Main function ─────────────────────────────────────────────
+
 def score_all_factors(symbol: str) -> dict:
     """
     Score all 6 factors for a stock symbol.
     Returns structured response ready for the API endpoint.
     """
-    ticker = yf.Ticker(symbol)
+    ticker = get_ticker(symbol)
 
     # Fetch data once — reuse across factors
     try:
@@ -83,6 +90,7 @@ def score_all_factors(symbol: str) -> dict:
     }
 
 
+# ── F1: Supply & Demand ───────────────────────────────────────
 
 def _score_supply_demand(fast_info, hist_60, hist_5) -> dict:
     """
@@ -147,6 +155,7 @@ def _score_supply_demand(fast_info, hist_60, hist_5) -> dict:
     }
 
 
+# ── F2: Company Performance ───────────────────────────────────
 
 def _score_company(info: dict, fast_info) -> dict:
     """
@@ -214,6 +223,7 @@ def _score_company(info: dict, fast_info) -> dict:
     }
 
 
+# ── F3: Economic Conditions ───────────────────────────────────
 
 def _score_economic() -> dict:
     """
@@ -225,7 +235,7 @@ def _score_economic() -> dict:
 
     try:
         # Use Nifty 50 trend as macro proxy — always available via yfinance
-        nifty    = yf.Ticker(NIFTY50_SYMBOL)
+        nifty    = get_ticker(NIFTY50_SYMBOL)
         n_hist   = nifty.history(period="1mo", interval="1d")
 
         if not n_hist.empty:
@@ -291,6 +301,7 @@ def _fetch_fred_signal() -> tuple[float, list[str]]:
     return 0.0, []
 
 
+# ── F4: Market Sentiment ──────────────────────────────────────
 
 BULLISH_WORDS = [
     "surge", "rally", "beat", "profit", "growth", "strong", "record",
@@ -378,6 +389,7 @@ def _newsapi_sentiment(company_name: str) -> tuple[float, list[str]]:
     )
 
 
+# ── F5: External & Political ──────────────────────────────────
 
 POLICY_BULLISH = [
     "stimulus", "reform", "infrastructure", "incentive", "subsidy",
@@ -446,6 +458,7 @@ def _score_external(symbol: str, info: dict) -> dict:
     }
 
 
+# ── F6: Liquidity & Activity ──────────────────────────────────
 
 def _score_liquidity(fast_info, hist_20) -> dict:
     """
@@ -508,6 +521,7 @@ def _score_liquidity(fast_info, hist_20) -> dict:
     }
 
 
+# ── RSI calculator ────────────────────────────────────────────
 
 def _calc_rsi(closes: list[float], period: int = 14) -> Optional[float]:
     """Standard RSI calculation from a list of closing prices."""

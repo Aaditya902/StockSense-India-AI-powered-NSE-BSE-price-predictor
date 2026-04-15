@@ -403,7 +403,7 @@
 </div><!-- /page-body -->
 
 <script>
-const API = 'http://localhost:8000';
+const API = window.location.origin.startsWith('file') ? 'http://127.0.0.1:8000' : window.location.origin;
 
 // ── Commodity icons ────────────────────────────────────────
 const COMM_ICONS = { Gold:'◈', Silver:'◇', 'Crude Oil':'◉', 'Natural Gas':'◎' };

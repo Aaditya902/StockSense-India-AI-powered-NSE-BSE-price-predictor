@@ -15,7 +15,7 @@ import yfinance as yf
 from datetime import datetime, timezone
 
 
-# ── In-memory cache ───────────────────────────────────────────
+# ── In-memory cache 
 
 _cache: dict = {
     "data":       None,

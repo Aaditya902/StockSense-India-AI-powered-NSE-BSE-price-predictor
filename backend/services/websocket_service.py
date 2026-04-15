@@ -22,6 +22,7 @@ from collections import defaultdict
 from fastapi import WebSocket
 
 import yfinance as yf
+from backend.services.yf_session import get_ticker
 
 from config import PRICE_REFRESH_SECONDS
 
@@ -148,7 +149,7 @@ def _fetch_price_sync(symbol: str) -> dict:
     Uses 3-strategy cascade same as stock_service.
     """
     try:
-        ticker         = yf.Ticker(symbol)
+        ticker         = get_ticker(symbol)
         current_price  = None
         previous_close = None
 

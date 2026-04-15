@@ -12,8 +12,11 @@ Called by: GET /market/movers
 import time
 import requests
 import yfinance as yf
+from backend.services.yf_session import get_ticker
 from datetime import datetime, timezone
 
+
+# ── In-memory cache ───────────────────────────────────────────
 
 _cache: dict = {
     "data":       None,
@@ -21,6 +24,8 @@ _cache: dict = {
 }
 CACHE_TTL = 300            # 5 minutes
 
+
+# ── NSE India API config ──────────────────────────────────────
 
 NSE_BASE    = "https://www.nseindia.com"
 NSE_GAINERS = f"{NSE_BASE}/api/live-analysis-variations?index=gainers"
@@ -52,6 +57,7 @@ NIFTY50_SYMBOLS = [
 ]
 
 
+# ── Main function called by router ────────────────────────────
 
 def get_market_movers() -> dict:
     """
@@ -85,6 +91,7 @@ def get_market_movers() -> dict:
         return _empty_response()
 
 
+# ── NSE India fetcher ─────────────────────────────────────────
 
 def _fetch_from_nse() -> dict:
     """
@@ -154,45 +161,56 @@ def _parse_nse_movers(data: dict, side: str) -> list[dict]:
     return movers
 
 
+# ── yfinance fallback ─────────────────────────────────────────
+
+# ── yfinance fallback ─────────────────────────────────────────
 
 def _fetch_from_yfinance() -> dict:
     """
-    Fetch a batch of Nifty 50 stocks and sort by % change.
-    yf.download is more efficient than fetching one by one.
+    Fetch top Nifty 50 stocks individually with rate limiting and sort by % change.
+    Replaces the batch yf.Tickers call which caused 429 errors.
     """
-    tickers = yf.Tickers(" ".join(NIFTY50_SYMBOLS))
-    movers  = []
+    from backend.services.yf_session import get_ticker
 
-    for symbol in NIFTY50_SYMBOLS:
+    results = []
+    for symbol in NIFTY50_SYMBOLS[:15]:   # limit to 15 to avoid rate limits
         try:
-            t    = tickers.tickers[symbol]
-            info = t.fast_info
+            ticker = get_ticker(symbol)
+            fi     = ticker.fast_info
 
-            price      = float(info.last_price)
-            prev_close = float(info.previous_close)
-            change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
-            name       = symbol.replace(".NS", "")
+            price = float(fi.last_price or 0)
+            prev  = float(fi.previous_close or price)
 
-            movers.append({
-                "name":       name,
+            # Fallback to history if fast_info gives zeros
+            if price == 0:
+                hist = ticker.history(period="5d", interval="1d")
+                if not hist.empty:
+                    closes = hist["Close"].dropna().tolist()
+                    price  = float(closes[-1]) if closes else 0
+                    prev   = float(closes[-2]) if len(closes) >= 2 else price
+
+            if price == 0:
+                continue
+
+            change_pct = round(((price - prev) / prev) * 100, 2) if prev else 0.0
+            results.append({
+                "name":       symbol.replace(".NS", ""),
                 "symbol":     symbol,
                 "price":      round(price, 2),
                 "change_pct": change_pct,
-                "direction":  "up" if change_pct > 0 else "down",
+                "direction":  "up" if change_pct > 0 else "down" if change_pct < 0 else "flat",
                 "source":     "yfinance",
             })
         except Exception:
             continue
 
-    movers.sort(key=lambda x: x["change_pct"], reverse=True)
-
+    results.sort(key=lambda x: x["change_pct"], reverse=True)
     return {
-        "gainers":      movers[:5],
-        "losers":       movers[-5:][::-1],   # bottom 5, worst first
+        "gainers":      results[:5],
+        "losers":       results[-5:][::-1] if len(results) >= 5 else results,
         "source":       "yfinance_fallback",
         "last_updated": datetime.now(timezone.utc).isoformat(),
     }
-
 
 
 def _empty_response() -> dict:
@@ -202,7 +220,6 @@ def _empty_response() -> dict:
         "source":       "unavailable",
         "last_updated": datetime.now(timezone.utc).isoformat(),
     }
-
 
 
 def invalidate_cache():

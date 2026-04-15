@@ -17,16 +17,19 @@ Called by: GET /stock/{symbol}/news
 import time
 import requests
 import yfinance as yf
+from backend.services.yf_session import get_ticker
 from datetime import datetime, timezone
 
 from config import NEWS_API_KEY
 
 
+# ── In-memory cache (per symbol) ─────────────────────────────
 
 _cache: dict[str, dict] = {}   # { "RELIANCE.NS": { data, expires_at } }
 CACHE_TTL = 900                # 15 minutes
 
 
+# ── Sentiment keywords ────────────────────────────────────────
 
 BULLISH_WORDS = [
     "surge", "rally", "beat", "profit", "growth", "strong", "record",
@@ -41,6 +44,8 @@ BEARISH_WORDS = [
     "pressure", "struggle", "trouble", "crisis", "fear", "uncertain",
 ]
 
+
+# ── Main function ─────────────────────────────────────────────
 
 def get_stock_news(symbol: str, company_name: str = "") -> dict:
     """
@@ -100,6 +105,8 @@ def get_stock_news(symbol: str, company_name: str = "") -> dict:
     return result
 
 
+# ── NewsAPI fetcher ───────────────────────────────────────────
+
 def _fetch_newsapi(company_name: str, symbol: str) -> list[dict]:
     """
     Fetch from NewsAPI.
@@ -136,12 +143,14 @@ def _fetch_newsapi(company_name: str, symbol: str) -> list[dict]:
     return articles
 
 
+# ── yfinance news fallback ────────────────────────────────────
+
 def _fetch_yfinance_news(symbol: str) -> list[dict]:
     """
     yfinance provides basic news via ticker.news.
     Less rich than NewsAPI but always available.
     """
-    ticker   = yf.Ticker(symbol)
+    ticker   = get_ticker(symbol)
     raw_news = ticker.news or []
 
     articles = []
@@ -167,6 +176,7 @@ def _fetch_yfinance_news(symbol: str) -> list[dict]:
     return articles
 
 
+# ── Sentiment scorer ──────────────────────────────────────────
 
 def _score_article(article: dict) -> dict:
     """
@@ -196,11 +206,12 @@ def _score_article(article: dict) -> dict:
     }
 
 
+# ── Helper ────────────────────────────────────────────────────
 
 def _get_company_name(symbol: str) -> str:
     """Get company short name from yfinance for search query."""
     try:
-        info = yf.Ticker(symbol).info
+        info = get_ticker(symbol).info
         return info.get("shortName") or info.get("longName") or symbol.replace(".NS", "")
     except Exception:
         return symbol.replace(".NS", "").replace(".BO", "")
