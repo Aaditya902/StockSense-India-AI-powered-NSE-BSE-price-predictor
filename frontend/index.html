@@ -403,7 +403,7 @@
 </div><!-- /page-body -->
 
 <script>
-const API = window.location.origin.startsWith('file') ? 'http://127.0.0.1:8000' : window.location.origin;
+const API = window.location.origin.startsWith('file') ? 'http://127.0.0.1:8000/api' : window.location.origin + '/api';
 
 // ── Commodity icons ────────────────────────────────────────
 const COMM_ICONS = { Gold:'◈', Silver:'◇', 'Crude Oil':'◉', 'Natural Gas':'◎' };
@@ -427,7 +427,10 @@ const cls  = (n) => n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
 
 function navigateTo(symbol) {
   saveRecent(symbol);
-  window.location.href = `stock.html?symbol=${encodeURIComponent(symbol)}`;
+  const isFile = window.location.origin.startsWith('file');
+  window.location.href = isFile
+    ? `stock.html?symbol=${encodeURIComponent(symbol)}`
+    : `/stock?symbol=${encodeURIComponent(symbol)}`;
 }
 
 // ── Recently viewed (localStorage) ────────────────────────

@@ -1,127 +1,113 @@
 """
-Search Resolver — Step 1 output
-Powers the GET /search?q= endpoint.
-
-Usage:
-    from search_resolver import SearchResolver
-    resolver = SearchResolver()
-    results = resolver.search("reliance")   # → list of matches
-    symbol  = resolver.resolve("Reliance")  # → "RELIANCE.NS"
+Search Resolver — Dynamic version
+Now powered by instruments.py which has ALL NSE/BSE stocks.
+Falls back to static nse_stocks.json if instruments not loaded.
 """
 
-import json
+import sys
 import os
 from typing import Optional
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "nse_stocks.json")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 class SearchResolver:
-    def __init__(self):
-        with open(DATA_PATH, encoding="utf-8") as f:
-            self._data = json.load(f)
-        self._stocks = self._data["stocks"]
 
-    def search(self, query: str, max_results: int = 8) -> list[dict]:
-        """
-        Fuzzy search by name, keyword, or symbol.
-        Returns list of {name, symbol, sector} dicts.
-        """
-        q = query.lower().strip()
+    def search(self, query: str, max_results: int = 10) -> list[dict]:
+        """Search all NSE/BSE stocks dynamically."""
+        q = query.strip()
         if not q:
             return []
 
-        results = []
-        seen = set()
+        # Try dynamic instruments first
+        try:
+            from backend.services.instruments import search_stocks
+            results = search_stocks(q, max_results=max_results)
+            if results:
+                return [self._format(r) for r in results]
+        except Exception:
+            pass
 
-        for stock in self._stocks:
-            sym = stock["symbol"]
-            if sym in seen:
-                continue
-            name_lower = stock["name"].lower()
-            sym_lower = sym.lower().replace(".ns", "")
-            keywords = [k.lower() for k in stock.get("keywords", [])]
-
-            if (
-                name_lower.startswith(q)
-                or sym_lower.startswith(q)
-                or any(k.startswith(q) for k in keywords)
-            ):
-                results.append(self._format(stock))
-                seen.add(sym)
-
-        if len(results) < max_results:
-            for stock in self._stocks:
-                sym = stock["symbol"]
-                if sym in seen:
-                    continue
-                name_lower = stock["name"].lower()
-                sym_lower = sym.lower()
-                keywords = [k.lower() for k in stock.get("keywords", [])]
-                all_text = f"{name_lower} {sym_lower} {' '.join(keywords)}"
-
-                if q in all_text:
-                    results.append(self._format(stock))
-                    seen.add(sym)
-                    if len(results) >= max_results:
-                        break
-
-        if len(results) < max_results:
-            query_words = q.split()
-            for stock in self._stocks:
-                sym = stock["symbol"]
-                if sym in seen:
-                    continue
-                name_lower = stock["name"].lower()
-                keywords = [k.lower() for k in stock.get("keywords", [])]
-                all_text = f"{name_lower} {' '.join(keywords)}"
-
-                if any(word in all_text for word in query_words):
-                    results.append(self._format(stock))
-                    seen.add(sym)
-                    if len(results) >= max_results:
-                        break
-
-        return results[:max_results]
+        # Fallback to static JSON
+        return self._static_search(q, max_results)
 
     def resolve(self, query: str) -> Optional[str]:
-        """
-        Resolve a name/keyword to an NSE symbol.
-        Returns the best match symbol or None.
-        e.g. "Reliance" → "RELIANCE.NS"
-        """
+        """Resolve a name/keyword to best matching symbol."""
         results = self.search(query, max_results=1)
         return results[0]["symbol"] if results else None
 
+    def all_stocks(self) -> list[dict]:
+        """Return all available stocks."""
+        try:
+            from backend.services.instruments import get_all_stocks
+            stocks = get_all_stocks()
+            if stocks:
+                return [self._format(s) for s in stocks]
+        except Exception:
+            pass
+        return self._static_all()
+
     def get_by_symbol(self, symbol: str) -> Optional[dict]:
-        """
-        Get stock info by exact symbol.
-        e.g. "RELIANCE.NS" → {name, symbol, sector}
-        """
-        sym = symbol.upper()
-        if not sym.endswith(".NS"):
-            sym += ".NS"
-        stock = self._data["by_symbol"].get(sym)
-        return self._format(stock) if stock else None
+        try:
+            from backend.services.instruments import get_by_symbol
+            s = get_by_symbol(symbol)
+            return self._format(s) if s else None
+        except Exception:
+            return None
 
     def get_by_sector(self, sector: str) -> list[dict]:
-        """Return all stocks in a given sector."""
-        symbols = self._data["sectors"].get(sector, [])
-        results = []
-        for sym in symbols:
-            stock = self._data["by_symbol"].get(sym)
-            if stock:
-                results.append(self._format(stock))
-        return results
+        """Sector filtering — works on static data only for now."""
+        return self._static_sector(sector)
 
-    def all_stocks(self) -> list[dict]:
-        """Return full list for frontend autocomplete."""
-        return [self._format(s) for s in self._stocks]
+    # ── Formatters ────────────────────────────────────────────
 
     @staticmethod
     def _format(stock: dict) -> dict:
         return {
-            "name": stock["name"],
-            "symbol": stock["symbol"],
-            "sector": stock["sector"],
+            "name":   stock.get("name") or stock.get("short_name", ""),
+            "symbol": stock.get("symbol", ""),
+            "sector": stock.get("sector") or stock.get("exchange", ""),
         }
+
+    # ── Static fallbacks ──────────────────────────────────────
+
+    def _static_search(self, query: str, max_results: int) -> list[dict]:
+        data   = self._load_static()
+        q      = query.lower().strip()
+        result = []
+        seen   = set()
+
+        for stock in data.get("stocks", []):
+            sym = stock["symbol"]
+            if sym in seen:
+                continue
+            name_l = stock["name"].lower()
+            sym_l  = sym.lower()
+            kws    = [k.lower() for k in stock.get("keywords", [])]
+            all_t  = f"{name_l} {sym_l} {' '.join(kws)}"
+            if q in all_t:
+                result.append(self._format(stock))
+                seen.add(sym)
+                if len(result) >= max_results:
+                    break
+        return result
+
+    def _static_all(self) -> list[dict]:
+        data = self._load_static()
+        return [self._format(s) for s in data.get("stocks", [])]
+
+    def _static_sector(self, sector: str) -> list[dict]:
+        data    = self._load_static()
+        symbols = data.get("sectors", {}).get(sector, [])
+        by_sym  = data.get("by_symbol", {})
+        return [self._format(by_sym[s]) for s in symbols if s in by_sym]
+
+    @staticmethod
+    def _load_static() -> dict:
+        import json
+        path = os.path.join(os.path.dirname(__file__), "nse_stocks.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"stocks": [], "by_symbol": {}, "sectors": {}}

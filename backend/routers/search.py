@@ -62,12 +62,43 @@ def search_stocks(
 
 
 @router.get("/all", response_model=list[StockMatch])
-def get_all_stocks():
+def get_all_stocks(
+    exchange: str = Query("NSE", description="NSE | BSE | ALL"),
+    limit: int    = Query(500,   description="Max results (default 500)"),
+):
     """
-    Returns full list of all 158 NSE stocks.
-    Used by the frontend to pre-load autocomplete data.
+    Returns all available stocks from NSE and/or BSE.
+    Powered by Upstox instrument master — thousands of stocks.
+    exchange: NSE | BSE | ALL
+    limit: max results to return (default 500 for frontend performance)
     """
-    return [StockMatch(**s) for s in _resolver.all_stocks()]
+    try:
+        from backend.services.instruments import get_all_stocks as _dynamic, total_count
+        stocks = get_all_stocks(exchange)
+        result = [
+            StockMatch(
+                name   = s.get("name", s.get("short_name", "")),
+                symbol = s.get("symbol", ""),
+                sector = s.get("exchange", ""),
+            )
+            for s in stocks[:limit]
+            if s.get("symbol")
+        ]
+        if result:
+            return result
+    except Exception:
+        pass
+    return [StockMatch(**s) for s in _resolver.all_stocks()][:limit]
+
+
+@router.get("/count")
+def get_stock_count():
+    """Returns total number of available instruments."""
+    try:
+        from backend.services.instruments import total_count
+        return {"total": total_count(), "source": "upstox_instruments"}
+    except Exception:
+        return {"total": len(_resolver.all_stocks()), "source": "static_json"}
 
 
 @router.get("/sector/{sector}", response_model=list[StockMatch])

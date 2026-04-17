@@ -22,6 +22,7 @@ Called by: GET /stock/{symbol}/predict
 import os
 import sys
 import yfinance as yf
+from backend.services.yf_session import get_ticker
 import requests
 import json
 from datetime import datetime, timezone
@@ -52,26 +53,30 @@ def get_prediction(symbol: str, factors: dict) -> dict:
     """
     Generate price prediction for a stock.
 
-    symbol  : NSE symbol e.g. RELIANCE.NS
-    factors : output from factor_service.score_all_factors()
-
-    Returns full prediction dict ready for the API response.
+    Tier 1 → LSTM model + AI  (best — needs trained model)
+    Tier 2 → Factor score + AI (works without trained model)
+    Tier 3 → Safe fallback     (always returns something)
     """
-    current_price = _get_current_price(symbol)
-
-    # Try Tier 1 first
     try:
-        return _predict_lstm_plus_ai(symbol, current_price, factors)
-    except Exception as e:
-        print(f"[PredictionEngine] Tier 1 failed ({e}) — trying Tier 2")
+        current_price = _get_current_price(symbol)
+    except Exception:
+        current_price = 0.0
 
-    # Tier 2 fallback
-    try:
-        return _predict_factor_only(symbol, current_price, factors)
-    except Exception as e:
-        print(f"[PredictionEngine] Tier 2 failed ({e}) — using Tier 3")
+    # Tier 1: LSTM + AI
+    if current_price > 0:
+        try:
+            return _predict_lstm_plus_ai(symbol, current_price, factors)
+        except Exception as e:
+            print(f"[Prediction] Tier 1 failed: {e}")
 
-    # Tier 3 — safe minimum response
+    # Tier 2: Factor rule + AI (works without any trained model)
+    if current_price > 0:
+        try:
+            return _predict_factor_only(symbol, current_price, factors)
+        except Exception as e:
+            print(f"[Prediction] Tier 2 failed: {e}")
+
+    # Tier 3: safe fallback
     return _predict_safe_fallback(symbol, current_price)
 
 
@@ -92,7 +97,7 @@ def _predict_lstm_plus_ai(symbol: str, current_price: float, factors: dict) -> d
     model, scaler, close_scaler, meta = load_model(symbol)
 
     # Fetch recent history for prediction window
-    hist     = yf.Ticker(symbol).history(period="90d", interval="1d")
+    hist     = get_ticker(symbol).history(period="90d", interval="1d")
     if hist.empty:
         raise RuntimeError("No history available for prediction")
 
@@ -169,7 +174,7 @@ def _predict_safe_fallback(symbol: str, current_price: float) -> dict:
         "direction":       "flat",
         "horizon_days":    PREDICTION_HORIZON_DAYS,
         "confidence":      "low",
-        "ai_reasoning":    "Prediction unavailable — insufficient data or model not trained yet.",
+        "ai_reasoning":    "Prediction temporarily unavailable. Using factor analysis above as a guide.",
         "model_used":      "none",
         "last_updated":    datetime.now(timezone.utc).isoformat(),
     }
@@ -368,10 +373,38 @@ def _call_gemini(prompt: str) -> tuple[float, str]:
     return _parse_ai_response(txt)
 
 
+# ── Utility ───────────────────────────────────────────────────
 
 def _get_current_price(symbol: str) -> float:
-    """Fetch current price — lightweight fast_info call."""
+    """
+    Fetch current price — tries 3 sources, never raises.
+    Returns 0.0 only as absolute last resort.
+    """
+    # Source 1: NSE direct
     try:
-        return round(float(yf.Ticker(symbol).fast_info.last_price), 2)
+        from backend.services.nse_direct import get_quote
+        price = get_quote(symbol).get("price", 0)
+        if price and price > 0:
+            return round(float(price), 2)
     except Exception:
-        raise RuntimeError(f"Cannot fetch current price for {symbol}")
+        pass
+
+    # Source 2: yfinance history
+    try:
+        hist = get_ticker(symbol).history(period="5d", interval="1d")
+        if not hist.empty:
+            closes = hist["Close"].dropna().tolist()
+            if closes:
+                return round(float(closes[-1]), 2)
+    except Exception:
+        pass
+
+    # Source 3: yfinance fast_info
+    try:
+        price = get_ticker(symbol).fast_info.last_price
+        if price and float(price) > 0:
+            return round(float(price), 2)
+    except Exception:
+        pass
+
+    raise RuntimeError(f"Cannot fetch current price for {symbol}")

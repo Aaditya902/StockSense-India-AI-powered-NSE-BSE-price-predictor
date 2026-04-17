@@ -1,49 +1,37 @@
 """
-yfinance Session Manager
-Fixes Yahoo Finance 429 Too Many Requests errors.
+yfinance Session Manager — compatible with yfinance >= 0.2.61
 
-Problems solved:
-  1. Yahoo Finance blocks requests without proper browser headers
-  2. Making too many calls too fast triggers rate limiting
-  3. Repeated calls for the same symbol waste quota
+WHAT CHANGED FROM 0.2.54
+-------------------------
+Yahoo Finance deprecated the old /v8/finance/chart cookie-based endpoint in
+late 2024. yfinance >= 0.2.55 switched to a new auth flow. The old version
+silently returns empty DataFrames or raises JSONDecodeError on individual stock
+calls (fast_info, history) even though index calls (/v8/finance/spark) still
+worked — which is why Sensex/Nifty showed real values but movers/commodities
+showed $0 and "No data".
 
-Solutions:
-  1. Custom session with realistic browser headers
-  2. Per-symbol in-memory cache (5 min TTL)
-  3. Minimum 0.5s delay between calls to same host
-  4. Automatic retry with exponential backoff on 429
+Solutions in this version:
+  1. Drop fast_info entirely — unreliable across versions; use history() only
+  2. Use yfinance's built-in session with proper headers (don't override it)
+  3. Per-symbol result cache (not ticker cache) — cache actual price data
+  4. Minimum 1.2s between calls to avoid 429
+  5. Clear error messages so fallbacks trigger correctly
 """
 
 import time
 import threading
 import yfinance as yf
-import requests
-from requests.adapters import HTTPAdapter
+from datetime import datetime, timezone
 
 
-# ── Realistic browser headers ────────────────────────────────
-
-HEADERS = {
-    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                       "Chrome/122.0.0.0 Safari/537.36",
-    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection":      "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-}
-
-
-# ── Rate limiter ─────────────────────────────────────────────
+# ── Rate limiter ──────────────────────────────────────────────
 
 _lock           = threading.Lock()
 _last_call_time = 0.0
-MIN_INTERVAL    = 0.5   # seconds between yfinance calls
+MIN_INTERVAL    = 1.2   # seconds between yfinance calls
 
 
 def _throttle():
-    """Ensure minimum interval between calls."""
     global _last_call_time
     with _lock:
         now     = time.time()
@@ -53,71 +41,69 @@ def _throttle():
         _last_call_time = time.time()
 
 
-# ── Ticker cache ─────────────────────────────────────────────
+# ── Price data cache (caches actual OHLCV, not Ticker objects) ─
 
-_ticker_cache: dict = {}   # symbol → { ticker, expires_at }
-TICKER_TTL = 300           # 5 minutes
+_price_cache: dict = {}   # symbol → { price, prev_close, change_pct, expires_at }
+PRICE_TTL = 300           # 5 minutes
 
 
-def get_ticker(symbol: str) -> yf.Ticker:
+def get_price(symbol: str) -> dict:
     """
-    Get a yfinance Ticker with rate limiting.
-    Returns cached ticker if available and not expired.
+    Returns { price, prev_close, change_pct, direction } for a symbol.
+    Uses history(period='5d') which is reliable across yfinance versions.
+    Raises RuntimeError on failure so callers can handle fallback.
     """
     now = time.time()
-    if symbol in _ticker_cache and now < _ticker_cache[symbol]["expires_at"]:
-        return _ticker_cache[symbol]["ticker"]
+    cached = _price_cache.get(symbol)
+    if cached and now < cached["expires_at"]:
+        return cached
 
     _throttle()
 
     try:
-        # Create session with proper headers to avoid 429
-        session = requests.Session()
-        session.headers.update(HEADERS)
-        adapter = HTTPAdapter(max_retries=2)
-        session.mount("https://", adapter)
-        session.mount("http://",  adapter)
-
-        ticker = yf.Ticker(symbol, session=session)
-
-    except Exception:
-        # Fallback — create ticker without custom session
         ticker = yf.Ticker(symbol)
+        hist   = ticker.history(period="5d", interval="1d", auto_adjust=True)
 
-    _ticker_cache[symbol] = {
-        "ticker":     ticker,
-        "expires_at": now + TICKER_TTL,
-    }
-    return ticker
+        if hist is None or hist.empty:
+            raise RuntimeError(f"yfinance returned empty history for {symbol}")
+
+        closes = hist["Close"].dropna().tolist()
+        if not closes:
+            raise RuntimeError(f"No close prices in yfinance history for {symbol}")
+
+        price      = round(float(closes[-1]), 2)
+        prev_close = round(float(closes[-2]), 2) if len(closes) >= 2 else price
+        change_pct = round((price - prev_close) / prev_close * 100, 2) if prev_close else 0.0
+
+        result = {
+            "price":      price,
+            "prev_close": prev_close,
+            "change_pct": change_pct,
+            "direction":  "up" if change_pct > 0 else "down" if change_pct < 0 else "flat",
+            "expires_at": now + PRICE_TTL,
+        }
+        _price_cache[symbol] = result
+        return result
+
+    except Exception as e:
+        # Re-raise with the symbol name for easier debugging
+        raise RuntimeError(f"yfinance failed for {symbol}: {e}") from e
 
 
-def get_ticker_with_retry(symbol: str, max_retries: int = 3) -> yf.Ticker:
+def get_ticker(symbol: str) -> yf.Ticker:
     """
-    Get ticker with exponential backoff retry on 429 errors.
-    Waits: 2s → 4s → 8s between retries.
+    Returns a plain yf.Ticker. Kept for backward compatibility with callers
+    that use ticker.history() directly.
+    No custom session — yfinance >= 0.2.55 manages its own auth internally.
+    Throttled to avoid 429.
     """
-    for attempt in range(max_retries):
-        try:
-            ticker = get_ticker(symbol)
-            # Quick probe to see if we're being rate-limited
-            _ = ticker.fast_info.last_price
-            return ticker
-        except Exception as e:
-            err_str = str(e).lower()
-            if "429" in err_str or "too many" in err_str:
-                wait = 2 ** (attempt + 1)   # 2, 4, 8 seconds
-                print(f"[YFinance] 429 rate limit for {symbol} — waiting {wait}s (attempt {attempt+1}/{max_retries})")
-                time.sleep(wait)
-                # Bust cache so we create a fresh session on retry
-                _ticker_cache.pop(symbol, None)
-            else:
-                return get_ticker(symbol)   # non-429 error, don't retry
-    return get_ticker(symbol)
+    _throttle()
+    return yf.Ticker(symbol)
 
 
 def clear_cache(symbol: str = None):
-    """Clear cache for one symbol or all."""
+    """Clear price cache for one symbol or all."""
     if symbol:
-        _ticker_cache.pop(symbol, None)
+        _price_cache.pop(symbol, None)
     else:
-        _ticker_cache.clear()
+        _price_cache.clear()

@@ -343,7 +343,7 @@ header{
 </div>
 
 <script>
-const API    = window.location.origin.startsWith('file') ? 'http://127.0.0.1:8000' : window.location.origin;
+const API    = window.location.origin.startsWith('file') ? 'http://127.0.0.1:8000/api' : window.location.origin + '/api';
 const symbol = new URLSearchParams(location.search).get('symbol') || 'RELIANCE.NS';
 let chart, series;
 
@@ -431,8 +431,9 @@ async function switchPeriod(p,btn) {
 
 // ── WebSocket ─────────────────────────────────────────────
 function connectWS() {
-  const wsHost = window.location.origin.startsWith('file') ? '127.0.0.1:8000' : window.location.host;
-  const ws = new WebSocket(`ws://${wsHost}/stock/${symbol}/live`);
+  const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsHost  = window.location.origin.startsWith('file') ? '127.0.0.1:8000' : window.location.host;
+  const ws = new WebSocket(`${wsProto}//${wsHost}/api/stock/${symbol}/live`);
   ws.onopen    = () => { document.getElementById('live-ts').textContent='Live'; };
   ws.onmessage = e => {
     const d = JSON.parse(e.data);

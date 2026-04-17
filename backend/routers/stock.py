@@ -246,7 +246,7 @@ def get_stock_factors(
     Scores all 6 factors for a stock on a scale of -1.0 to +1.0.
 
     Factors:
-      F1  Supply & Demand        (25%)  — RSI, volume ratio, 5-day momentum
+      F1  Demand & Supply        (25%)  — RSI, volume ratio, 5-day momentum
       F2  Company Performance    (20%)  — EPS, PE ratio, dividend, 52-week range
       F3  Economic Conditions    (15%)  — Nifty trend, RBI rate context
       F4  Market Sentiment       (20%)  — NewsAPI NLP / analyst recommendation
